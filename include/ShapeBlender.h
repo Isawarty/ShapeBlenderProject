@@ -12,6 +12,19 @@ struct AffineBasis {
     std::array<int, 3> polyB_indices;
 };
 
+/**
+ * @brief 一个辅助结构体，用于存储和排序 smooth_a 的结果。
+ */
+struct SmoothPair {
+    double smooth_a_value;
+    int i_A;
+    int i_B;
+
+    // 重载 > 运算符，以便 std::sort 可以对其进行降序排序
+    bool operator>(const SmoothPair& other) const {
+        return smooth_a_value > other.smooth_a_value;
+    }
+};
 
 /**
  * @brief 封装模糊形状渐变算法的核心逻辑。
@@ -45,7 +58,6 @@ class ShapeBlender {
         * @brief 寻找最佳仿射基。
         * 思路：遍历已建立的对应关系 m_correspondence，
         * 找到三对顶点，它们的"smooth_t"函数值最大。
-        * (简化：我们使用 sim_t 作为 smooth_a 的代理)。
         */
         void findOptimalBasis();
 
@@ -62,6 +74,7 @@ class ShapeBlender {
         */
         Polygon getInterpolatedPolygon(float t) const;
 
+
         // 访问器，以便Application可以绘制它们
         const Polygon& getPolyA() const { return m_polyA; }
         const Polygon& getPolyB() const { return m_polyB; }
@@ -69,7 +82,7 @@ class ShapeBlender {
     private:
     Polygon m_polyA; // 源
     Polygon m_polyB; // 目标
-    Eigen::MatrixXd m_similarityGraph; // 映射 m_polyA 的索引 -> m_polyB 的索引
+    //Eigen::MatrixXd m_similarityGraph; // 映射 m_polyA 的索引 -> m_polyB 的索引，debug用
 
     std::map<int, int> m_correspondence;
     AffineBasis m_basis;
@@ -78,10 +91,21 @@ class ShapeBlender {
     double m_w1 = 0.5;
     double m_w2 = 0.5;
 
+    //smooth_a 的权重(PDF未指定，我们一开始用 1/3)
+    double m_smooth_a_wS = 0.333;
+    double m_smooth_a_wR = 0.333;
+    double m_smooth_a_wA = 0.334;
+
     /**
      * @brief 计算两个“多边形角”之间的三角形相似度 (sim_t)。
      */
     double compute_sim_t(int i_A, int i_B) const;
+
+    /**
+     * @brief 计算一对对应 "角" 的 "好坏" (smooth_a)。
+     */
+    double compute_smooth_a(int i_A, int i_B) const;
+
     
     /**
      * @brief 计算点 P 在由 (A, B, C) 定义的局部坐标系中的 (u, v) 坐标。

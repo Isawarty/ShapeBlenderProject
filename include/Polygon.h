@@ -13,11 +13,32 @@
 struct Polygon {
     std::vector<Eigen::Vector2d> vertices;
     int n = 0; // 顶点数
+    double totalArea = 0.0;//多边形面积
 
-    // 预计算的内在属性
-    std::vector<double> edge_lengths_prev; // 边 P[i-1] -> P[i] 的长度
-    std::vector<double> edge_lengths_next; // 边 P[i] -> P[i+1] 的长度
-    std::vector<double> angles;            // 在 P[i] 处的角度 (单位：度)
+    // --- "角三角形" (v_prev, v_curr, v_next) 的属性 ---
+
+    // 1. 边长
+    std::vector<double> edge_e1_lengths; // 边 v_prev -> v_curr 
+    std::vector<double> edge_e2_lengths; // 边 v_curr -> v_next
+    std::vector<double> edge_e0_lengths; // 边 v_prev -> v_next
+    
+    // 2. 角度 
+    std::vector<double> angles_curr;       // 在 v_curr 处的角
+    std::vector<double> angles_prev;       // 在 v_prev 处的角
+    std::vector<double> angles_next;       // 在 v_next 处的角
+
+    // 3. 面积
+    std::vector<double> cornerTriangle_areas; // 角三角形的面积
+
+
+    // --- 辅助函数 ---
+    inline int get_prev_idx(int i) const {
+        return (i == 0) ? n - 1 : i - 1;
+    }
+    inline int get_next_idx(int i) const {
+        return (i == n - 1) ? 0 : i + 1;
+    }
+
 
     /**
      * @brief 从JSON文件加载顶点。
@@ -32,4 +53,17 @@ struct Polygon {
      * 两个向量。存储它们的长度，并计算它们之间的夹角。
      */
     void precomputeIntrinsics();
+
+private:
+    /**
+     * @brief 计算并返回一个三角形(p1, p2, p3)的三个角（单位：度）。
+     * @param p1 顶点1
+     * @param p2 顶点2
+     * @param p3 顶点3
+     * @return 一个包含三个角 {angle_at_p1, angle_at_p2, angle_at_p3} 的 std::array。
+     */
+    std::array<double, 3> computeTriangleAngles(
+        const Eigen::Vector2d& p1, 
+        const Eigen::Vector2d& p2, 
+        const Eigen::Vector2d& p3) const;
 };
