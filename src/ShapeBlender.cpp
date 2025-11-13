@@ -2,11 +2,13 @@
 #include "Eigen/Core"
 #include "Polygon.h"
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <ostream>
 #include <vector>
 #include <algorithm> // for std::sort
 #include <functional>
+#include "Eigen/LU"
 
 // 用于M_PI
 #define _USE_MATH_DEFINES
@@ -280,5 +282,104 @@ Eigen::Vector2d ShapeBlender::getWorldCoords(const Eigen::Vector2d& uv,
 }
 
 Polygon ShapeBlender::getInterpolatedPolygon(float t) const {
+    Polygon resultPoly;
+    if(m_polyA.n == 0 || m_polyB.n == 0) return resultPoly;
+
+    //获取基顶点
+    Eigen::Vector2d A1 = m_polyA.vertices[m_basis.polyA_indices[0]];
+    Eigen::Vector2d B1 = m_polyA.vertices[m_basis.polyA_indices[1]];
+    Eigen::Vector2d C1 = m_polyA.vertices[m_basis.polyA_indices[2]];
+   
+    Eigen::Vector2d A2 = m_polyB.vertices[m_basis.polyB_indices[0]];
+    Eigen::Vector2d B2 = m_polyB.vertices[m_basis.polyB_indices[1]];
+    Eigen::Vector2d C2 = m_polyB.vertices[m_basis.polyB_indices[2]];
     
+    //获得A和T
+    Eigen::Matrix<double, 6, 6> M_solve;
+    Eigen::Matrix<double, 6, 1> R_solve;
+
+    M_solve <<  A1.x(), A1.y(), 0, 0, 1, 0,
+                0, 0, A1.x(), A1.y(), 0, 1,
+                B1.x(), B1.y(), 0, 0, 1, 0,
+                0, 0, B1.x(), B1.y(), 0, 1,
+                C1.x(), C1.y(), 0, 0, 1, 0,
+                0, 0, C1.x(), C1.y(), 0, 1;
+
+    R_solve << A2.x(), A2.y(), B2.x(), B2.y(), C2.x(), C2.y(); 
+    Eigen::Matrix<double, 6, 1> X_solve = M_solve.colPivHouseholderQr().solve(R_solve);
+
+    Eigen::Matrix2d A_mat;
+    A_mat << X_solve(0), X_solve(1), X_solve(2), X_solve(3);
+
+    Eigen::RowVector2d T_vec;
+    T_vec << X_solve(4), X_solve(5);
+
+    // 下面开始分解 A 矩阵
+    Eigen::Matrix2d B_mat;
+    Eigen::Matrix2d C_mat;
+    double theta = 0.0;
+
+    double det_A = A_mat.determinant();
+    double sign_detA = (det_A < 0) ? -1.0 : 1.0;
+
+    Eigen::Matrix2d cofactor_matrix(A_mat(1,1), -A_mat(1,0), -A_mat(0,1), A_mat(0,0));
+    B_mat = A_mat + sign_detA * cofactor_matrix;
+
+    //归一化 B
+    Eigen::Vector2d b1 = B_mat.col(0);
+    b1.normalize();
+    B_mat << b1.x(), -b1.y(), 
+             b1.y(),  b1.x();
+    
+    theta = std::atan2(b1.y(), b1.x());
+    C_mat = B_mat.transpose() * A_mat;
+
+
+    // 插值并且重新组合
+    double t_f = static_cast<double>(t);
+    Eigen::Matrix2d A_t;
+    Eigen::RowVector2d T_t;
+
+    //插值旋转 B
+    double theta_t = t_f * theta;
+    Eigen::Matrix2d B_t;
+    B_t << std::cos(theta_t), -std::sin(theta_t),
+           std::sin(theta_t),  std::cos(theta_t);
+
+    //插值缩放 C
+    Eigen::Matrix2d C_t = t_f * C_mat;
+
+    //插值平移 T
+    T_t = t_f * T_vec;
+    
+    //重新组合 A
+    Eigen::Matrix2d I = Eigen::Matrix2d::Identity();
+    A_t = (1.0-t_f) * I + B_t * C_t;
+
+    //----- 应用变化 ----------
+    Eigen::Vector2d A_t_final = A_t.transpose() * A1 + T_t.transpose();
+    Eigen::Vector2d B_t_final = A_t.transpose() * B1 + T_t.transpose();
+    Eigen::Vector2d C_t_final = A_t.transpose() * C1 + T_t.transpose();
+
+    resultPoly.vertices.resize(m_polyA.n);
+    resultPoly.n = m_polyA.n;
+
+    for(int i_A = 0; i_A < m_polyA.n; ++i_A){
+        const Eigen::Vector2d& X1 = m_polyA.vertices[i_A];
+
+        if(m_correspondence.count(i_A)){
+            int i_B = m_correspondence.at(i_A);
+            const Eigen::Vector2d& X2 = m_polyB.vertices[i_B];
+
+            Eigen::Vector2d uv1 = getLocalCoords(X1, A1, B1, C1);
+            Eigen::Vector2d uv2 = getLocalCoords(X2, A2, B2, C2);
+            Eigen::Vector2d uv_t = (1.0-t_f) * uv1 + t_f * uv2; 
+
+            resultPoly.vertices[i_A] = getWorldCoords(uv_t, A_t_final, B_t_final, C_t_final);
+        }else {
+            std::cerr << "m_correspondense[" << i_A << "] Cannot Find i_B"  << std::endl; 
+        }
+
+    }
+    return resultPoly;
 }
