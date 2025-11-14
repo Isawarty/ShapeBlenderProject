@@ -38,6 +38,16 @@ class ShapeBlender {
     public:
         ShapeBlender() = default;
 
+
+        // ----- sim_t 的权重 -----
+        float m_w1 = 0.5f;//边长权重
+        float m_w2 = 0.5f;//角度权重
+
+        //----- smooth_a 的权重 -----(PDF未指定，我们一开始用 1/3)
+        float m_smooth_a_wS = 0.333f;
+        float m_smooth_a_wR = 0.333f;
+        float m_smooth_a_wA = 0.334f;
+
         /** 
         * @brief 加载源多边形和目标多边形
         */
@@ -46,9 +56,9 @@ class ShapeBlender {
 
         /**
         * @brief 计算顶点对应关系。
-        * 思路：构建一个 (m x n) 的“模糊相似图” G 。
+        * 构建一个 (m x n) 的“模糊相似图”  。
         * G[i][j] = sim_t(A[i], B[j])。
-        * 然后在代价图 (1 - G) 上运行动态规划，找到最短路径。
+        * 然后在代价图 (1 - G) 上运行n_A次动态规划，找到最短路径。
         * 这条路径就是顶点对应关系。
         */
         void computeCorrespondence();
@@ -56,7 +66,7 @@ class ShapeBlender {
 
         /**
         * @brief 寻找最佳仿射基。
-        * 思路：遍历已建立的对应关系 m_correspondence，
+        * 遍历已建立的对应关系 m_correspondence，
         * 找到三对顶点，它们的"smooth_t"函数值最大。
         */
         void findOptimalBasis();
@@ -64,13 +74,13 @@ class ShapeBlender {
 
         /**
         * @brief 计算并返回给定t值的插值多边形。
-        * 思路：按照 [cite: 421-426] 中的插值方法。
+        * 按照PDF中的插值方法。
         * 1. 线性插值三个基顶点 A, B, C 得到 A(t), B(t), C(t)。
         * 2. 遍历所有对应点 (X1, X2)。
-        * 3. 计算 X1 相对于 (A1, B1, C1) 的局部坐标 (u1, v1) [cite: 394]。
-        * 4. 计算 X2 相对于 (A2, B2, C2) 的局部坐标 (u2, v2) [cite: 395]。
-        * 5. 插值局部坐标 (u(t), v(t)) [cite: 423, 425]。
-        * 6. 将 (u(t), v(t)) 转换回世界坐标，使用 (A(t), B(t), C(t)) [cite: 426]。
+        * 3. 计算 X1 相对于 (A1, B1, C1) 的局部坐标 (u1, v1) 
+        * 4. 计算 X2 相对于 (A2, B2, C2) 的局部坐标 (u2, v2)
+        * 5. 插值局部坐标 (u(t), v(t))
+        * 6. 将 (u(t), v(t)) 转换回世界坐标，使用 (A(t), B(t), C(t))。
         */
         Polygon getInterpolatedPolygon(float t) const;
 
@@ -82,19 +92,10 @@ class ShapeBlender {
     private:
     Polygon m_polyA; // 源
     Polygon m_polyB; // 目标
-    //Eigen::MatrixXd m_similarityGraph; // 映射 m_polyA 的索引 -> m_polyB 的索引，debug用
 
     std::map<int, int> m_correspondence;
     AffineBasis m_basis;
 
-    // sim_t 的权重
-    double m_w1 = 0.5;
-    double m_w2 = 0.5;
-
-    //smooth_a 的权重(PDF未指定，我们一开始用 1/3)
-    double m_smooth_a_wS = 0.333;
-    double m_smooth_a_wR = 0.333;
-    double m_smooth_a_wA = 0.334;
 
     /**
      * @brief 计算两个“多边形角”之间的三角形相似度 (sim_t)。

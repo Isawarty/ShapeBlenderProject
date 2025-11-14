@@ -115,6 +115,7 @@ void Polygon::precomputeIntrinsics(){
         totalArea+= (p1.x() * p2.y() - p1.y() * p2.x());
      }
 
+     signFlag = (totalArea < 0) ? -1 : 1;
      totalArea = 0.5 * std::abs(totalArea);
      
 }

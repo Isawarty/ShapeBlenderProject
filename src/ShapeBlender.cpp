@@ -25,6 +25,14 @@ bool ShapeBlender::loadPolygons(const std::string& pathA, const std::string& pat
         return false;
     }
 
+    if (m_polyA.signFlag != m_polyB.signFlag) {
+        std::cout << "Winding order mismatch detected. Reversing Polygon B." << std::endl;
+        //反转 B 的顶点列表
+        std::reverse(m_polyB.vertices.begin(), m_polyB.vertices.end());
+        //重新计算 B 的所有内在属性
+        m_polyB.precomputeIntrinsics();
+    }
+
     std::cout << "Loading Polygons : A (" << m_polyA.n <<  "verts ) and B (" << m_polyB.n << " verts)." << std::endl;
     return true;
 }
@@ -41,11 +49,11 @@ double ShapeBlender::compute_sim_t(int i_A, int i_B) const{
     double angle_1 = m_polyB.angles_curr[i_B];
 
     // 计算 sim_t
-    double term1_num = std::abs(e1_0 * e2_1 - e1_1 * e2_0);
+    double term1_num = std::fabs(e1_0 * e2_1 - e1_1 * e2_0);
     double term1_den = e1_0 * e2_1 + e1_1 * e2_0;
     
     double sim_edges = (term1_den < 1e-9) ? 1.0 : (1.0 - term1_num / term1_den);
-    double sim_angles = 1.0 - std::abs(angle_0 - angle_1) / 360;
+    double sim_angles = 1.0 - std::fabs(angle_0 - angle_1) / 360.0;
 
     return m_w1 * sim_edges + m_w2 * sim_angles;
 }
@@ -66,7 +74,7 @@ double ShapeBlender::compute_smooth_a(int i_A, int i_B) const{
     double e1_B = m_polyB.edge_e1_lengths[i_B];
     double e2_B = m_polyB.edge_e2_lengths[i_B];
 
-    double diff_edges = std::abs(e0_A - e0_B) + std::abs(e1_A - e1_B) + std::abs(e2_A - e2_B);
+    double diff_edges = std::fabs(e0_A - e0_B) + std::fabs(e1_A - e1_B) + std::fabs(e2_A - e2_B);
     double sum_edges = (e0_A + e1_A + e2_A) + (e0_B + e1_B + e2_B);
     double sim_S_edges = (sum_edges < 1e-7) ? 1.0 : (1.0 - diff_edges / sum_edges);
 
@@ -80,7 +88,7 @@ double ShapeBlender::compute_smooth_a(int i_A, int i_B) const{
     double a2_B = m_polyB.angles_next[i_B];
 
     
-    double diff_angles = std::abs(a0_A- a0_B) + std::abs(a1_A- a1_B) + std::abs(a2_A- a2_B);
+    double diff_angles = std::fabs(a0_A- a0_B) + std::fabs(a1_A- a1_B) + std::fabs(a2_A- a2_B);
     double sim_S_angles = 1.0 - diff_angles / 180.0;
     sim_S_angles = std::max(0.0, sim_S_angles);
 
@@ -101,11 +109,11 @@ double ShapeBlender::compute_smooth_a(int i_A, int i_B) const{
 
     double R_rad = angle_vec_B - angle_vec_A;
     R_rad = std::atan2(std::sin(R_rad), std::cos(R_rad));
-    double R_deg = std::abs(R_rad * 180.0 / M_PI);
+    double R_deg = std::fabs(R_rad * 180.0 / M_PI);
 
     double R = 1.0 - R_deg / 180.0;
 
-    // 计算 A (面积比)
+    // ----- 计算 A (面积比) -----
     double area_sum_triangles = m_polyA.cornerTriangle_areas[i_A] + m_polyB.cornerTriangle_areas[i_B];
     double area_sum_polygons = m_polyA.totalArea + m_polyB.totalArea;
     double A = (area_sum_polygons < 1e-9) ? 0.0 : area_sum_triangles / area_sum_polygons;
@@ -127,86 +135,113 @@ void ShapeBlender::computeCorrespondence(){
     }
 
     // 构建代价图(m x n)，
-    //m_similarityGraph.resize(m, n);
     Eigen::MatrixXd costGraph(m, n); 
     
     for (int i = 0; i < m; ++i) {
         for (int j = 0; j < n; ++j) {
             double sim = compute_sim_t(i, j);
-            //m_similarityGraph(i, j) = sim;
             costGraph(i, j) = 1.0 - sim;
         }
     }
 
-    //----- 初始化DP所需的结构 -----
-    int n_double = 2 * n;
-    Eigen::MatrixXd dpCost(m,n_double);
-    Eigen::MatrixXd dpPath(m,n_double);// 0 = SE ,1 = S, 2 = Start
 
-    //辅助函数
-    auto get_cost = [&](int i, int j){
-        return costGraph(i, j % n);
-    };
+    double min_total_cost = std::numeric_limits<double>::max();
+    int best_k = 0; // 最佳的 A 的起始顶点
+    
+    //----- 将DP逻辑抽象为一个辅助函数 -----
+    auto run_single_dp_pass = [&](int k) -> std::pair<double, Eigen::MatrixXi> {
+        
+        Eigen::MatrixXd dpCost(m, n);
+        Eigen::MatrixXi dpPath(m, n); // 0=SE, 1=S, 2=Start
 
-    // ----- 初始化DP表 -----
-    for(int j = 0; j < n_double; ++j){
-        dpCost(0,j) = get_cost(0,j); 
-        dpPath(0,j) = 2; // 起点 
-    }
+        auto get_cost = [&](int i, int j) {
+            return costGraph((i + k) % m, j); // (i+k)%m 是 A 中的真实索引
+        };
 
-    for(int i = 1; i < m; ++i){
-        dpCost(i,0) = dpCost(i - 1, 0) + get_cost(i,0); 
-        dpPath(i,0) = 1;//1 = South 
-    }
+        // 初始化
+        dpCost(0, 0) = get_cost(0, 0);
+        dpPath(0, 0) = 2; // Start
+        
+        for(int i = 1; i < m; ++i){
+            dpCost(i, 0) = dpCost(i - 1, 0) + get_cost(i, 0); 
+            dpPath(i, 0) = 1; // 1 = South
+        }
+        for(int j = 1; j < n; ++j){
+            // (i=0, j>0) 的路径是不可能的，因为这需要 'East' 移动
+            dpCost(0, j) = std::numeric_limits<double>::infinity();
+            dpPath(0, j) = -1; 
+        }
 
-    // ----- 填充DP表 -----
-    for(int i = 1; i < m; ++i){
-        for(int j = 1; j < n_double; ++j){
-            double costS = dpCost(i - 1,j); //南下
-            double costSE = dpCost(i - 1, j - 1); //东南下
+        // 填充DP表
+        for(int i = 1; i < m; ++i){
+            for(int j = 1; j < n; ++j){
+                
+                // i 必须大于等于 j
+                if (j > i) {
+                    dpCost(i, j) = std::numeric_limits<double>::infinity();
+                    dpPath(i, j) = -1;
+                    continue;
+                }
 
+                double costS = dpCost(i - 1, j);    // South
+                double costSE = dpCost(i - 1, j - 1); // Southeast
 
-            if(costSE < costS){
-                dpCost(i,j) = costSE + get_cost(i,j);
-                dpPath(i,j) = 0;
-            }else{
-                dpCost(i,j) = costS + get_cost(i,j);
-                dpPath(i,j) = 1;
+                //我们只允许 S 和 SE
+                if (costSE <= costS) { 
+                    dpCost(i, j) = costSE + get_cost(i, j);
+                    dpPath(i, j) = 0; // 0 = SE
+                } else {
+                    dpCost(i, j) = costS + get_cost(i, j);
+                    dpPath(i, j) = 1; // 1 = S
+                }
             }
         }
-    }
+        
+        return { dpCost(m - 1, n - 1), dpPath };
+    };
 
-    // ----- 寻找最佳终点 -----
-    double min_total_cost = std::numeric_limits<double>::max();
-    int best_j_end = n - 1;
 
-    for(int j = n - 1; j < n_double; ++j){
-        if(dpCost(m - 1,j) < min_total_cost){
-            min_total_cost = dpCost(m - 1, j);
-            best_j_end = j;
+    for (int k = 0; k < m; ++k) {
+        double current_total_cost = run_single_dp_pass(k).first; // 只获取代价
+
+        if (current_total_cost < min_total_cost) {
+            min_total_cost = current_total_cost;
+            best_k = k;
         }
     }
 
-    // ----- 回溯路径 -----
+    std::cout << "  - Best start vertex (k) = " << best_k << std::endl;
+
+    // -----------------------------------------------------------------
+    // 只为 'best_k' 重新获取一次 dpPath
+    
+    Eigen::MatrixXi dpPath = run_single_dp_pass(best_k).second; // 只获取路径
+
     m_correspondence.clear();
     int i = m-1;
-    int j = best_j_end;
+    int j = n-1;
     
-    while (i >= 0 && j >=0) {
-        m_correspondence[i] = j % n;
+    while (i >= 0 && j >= 0) {
+        // 将 "窗口" 索引 (i, j) 转换回 "真实" 索引
+        m_correspondence[(i + best_k) % m] = j;
+        
         int path = dpPath(i,j);
-        if(path == 0){
+        
+        if (path == 2) { // Start
+            break; 
+        }
+        
+        if(path == 0){ // SE
             i--;
             j--;
-        }else if (path == 1) {
+        } else { // S
             i--;
-        }else if(path == 2){
-            break;
-        }    
+        }
     }
-
-    std::cout << "  - Best path end index (j_end) = " << best_j_end << " (maps to B[" << (best_j_end % n) << "])" << std::endl;
+    std::cout << "  - i = " << i << "; j = " << j << std::endl;
+    std::cout << "  - Best path start index (A_start) = " << best_k << " (maps to B[ 0 ])" << std::endl;
     std::cout << "  - Min total cost = " << min_total_cost << std::endl;
+    std::cout << "  - Correspondence map size: " << m_correspondence.size() << " (should be " << m << ")" << std::endl;
 }
 
 void ShapeBlender::findOptimalBasis(){
@@ -269,7 +304,6 @@ Eigen::Vector2d ShapeBlender::getLocalCoords(const Eigen::Vector2d& p,
     Eigen::Vector2d rhs = p - b;   
 
     // 使用 .solve() 更稳定
-    //  我们的 smooth_a 检查旨在防止这种情况）
     return T.colPivHouseholderQr().solve(rhs);    
 } 
 
@@ -334,7 +368,7 @@ Polygon ShapeBlender::getInterpolatedPolygon(float t) const {
              b1.y(),  b1.x();
     
     theta = std::atan2(b1.y(), b1.x());
-    C_mat = B_mat.transpose() * A_mat;
+    C_mat = B_mat.inverse() * A_mat;
 
 
     // 插值并且重新组合
@@ -359,9 +393,9 @@ Polygon ShapeBlender::getInterpolatedPolygon(float t) const {
     A_t = (1.0-t_f) * I + B_t * C_t;
 
     //----- 应用变化 ----------
-    Eigen::Vector2d A_t_final = A_t.transpose() * A1 + T_t.transpose();
-    Eigen::Vector2d B_t_final = A_t.transpose() * B1 + T_t.transpose();
-    Eigen::Vector2d C_t_final = A_t.transpose() * C1 + T_t.transpose();
+    Eigen::Vector2d A_t_final = A_t * A1 + T_t.transpose();
+    Eigen::Vector2d B_t_final = A_t * B1 + T_t.transpose();
+    Eigen::Vector2d C_t_final = A_t * C1 + T_t.transpose();
 
     resultPoly.vertices.resize(m_polyA.n);
     resultPoly.n = m_polyA.n;

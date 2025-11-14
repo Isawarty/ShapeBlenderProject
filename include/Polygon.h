@@ -14,6 +14,7 @@ struct Polygon {
     std::vector<Eigen::Vector2d> vertices;
     int n = 0; // 顶点数
     double totalArea = 0.0;//多边形面积
+    bool signFlag;
 
     // --- "角三角形" (v_prev, v_curr, v_next) 的属性 ---
 
@@ -49,7 +50,7 @@ struct Polygon {
 
     /**
      * @brief 计算并填充 edge_lengths 和 angles 向量。
-     * 思路：遍历所有顶点，计算连接前一个、当前和后一个顶点的
+     * 遍历所有顶点，计算连接前一个、当前和后一个顶点的
      * 两个向量。存储它们的长度，并计算它们之间的夹角。
      */
     void precomputeIntrinsics();
