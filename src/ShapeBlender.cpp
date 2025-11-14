@@ -93,7 +93,7 @@ double ShapeBlender::compute_smooth_a(int i_A, int i_B) const{
     Eigen::Vector2d vec_A = v_next_A - v_curr_A;
 
     const auto& v_curr_B = m_polyB.vertices[i_B];
-    const auto& v_next_B = m_polyB.vertices[m_polyA.get_next_idx(i_B)];
+    const auto& v_next_B = m_polyB.vertices[m_polyB.get_next_idx(i_B)];
     Eigen::Vector2d vec_B = v_next_B - v_curr_B;
 
     double angle_vec_A = std::atan2(vec_A.y(), vec_A.x());
@@ -322,7 +322,9 @@ Polygon ShapeBlender::getInterpolatedPolygon(float t) const {
     double det_A = A_mat.determinant();
     double sign_detA = (det_A < 0) ? -1.0 : 1.0;
 
-    Eigen::Matrix2d cofactor_matrix(A_mat(1,1), -A_mat(1,0), -A_mat(0,1), A_mat(0,0));
+    Eigen::Matrix2d cofactor_matrix;
+    cofactor_matrix << A_mat(1,1), -A_mat(1,0),  
+                       -A_mat(0,1), A_mat(0,0); 
     B_mat = A_mat + sign_detA * cofactor_matrix;
 
     //归一化 B
