@@ -110,7 +110,7 @@ void Application::mainLoop() {
     ImGuiWindowFlags host_window_flags = 0;
     host_window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
     host_window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
-    host_window_flags |= ImGuiWindowFlags_NoBackground; // 可选：如果您希望dockspace透明
+    host_window_flags |= ImGuiWindowFlags_NoBackground;  
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -123,7 +123,7 @@ void Application::mainLoop() {
 
     // 创建 DockSpace
     ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
-    ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode; // 这使得中心节点透明，可以绘制3D场景
+    ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode; 
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
 
     // 结束背景窗口
