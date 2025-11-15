@@ -202,14 +202,6 @@ void ShapeBlender::computeCorrespondence(int manual_k){
     };
 
 
-    // for (int k = 0; k < m; ++k) {
-    //     double current_total_cost = run_single_dp_pass(k).first; // 只获取代价
-
-    //     if (current_total_cost < min_total_cost) {
-    //         min_total_cost = current_total_cost;
-    //         best_k = k;
-    //     }
-    // }
     if (manual_k == -1) {
         // --- 自动模式 ---
         // (遍历 A 的 m 个起始点)
@@ -229,8 +221,6 @@ void ShapeBlender::computeCorrespondence(int manual_k){
         std::cout << "Running Manual-Search for k = " << manual_k << " (O(m*n))..." << std::endl;
         m_bestK = manual_k;
     }
-
-    //std::cout << "  - Best start vertex (k) = " << best_k << std::endl;
 
     // -----------------------------------------------------------------
     // 重走 'best_k'
