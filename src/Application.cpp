@@ -213,10 +213,10 @@ void Application::drawUI() {
         sim_changed = true;
     }
 
-    // if (ImGui::Button("Recompute Correspondence")) {
-    //     m_blender.computeCorrespondence();
-    //     std::cout << "Recompute Correspondence done." << std::endl;
-    // }
+    if (ImGui::Button("Recompute Correspondence")) {
+         m_blender.computeCorrespondence();
+         std::cout << "Recompute Correspondence done." << std::endl;
+    }
 
     ImGui::Separator(); 
     ImGui::Spacing();
