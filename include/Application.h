@@ -66,4 +66,7 @@ private:
     // 用于 ImGui 文本输入的缓冲区
     char m_pathABuf[128];
     char m_pathBBuf[128];
+
+    bool m_autoFindK = true; // 是否自动寻找 best_k
+    int m_manualK = 0;       // 手动指定的 k 值
 };

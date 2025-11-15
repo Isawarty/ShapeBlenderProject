@@ -79,8 +79,11 @@ void Application::loadData(){
     if (!m_blender.loadPolygons(m_pathABuf, m_pathBBuf)) {
         std::cerr << "Error Loading polygons. Check paths." << std::endl;
     } else {
-        m_blender.computeCorrespondence();
+        int k_to_run = m_autoFindK ? -1 : m_manualK;
+        m_blender.computeCorrespondence(k_to_run);
         std::cout << "Compute Correspondence done." << std::endl;
+
+        m_manualK = m_blender.getBestK();
         m_blender.findOptimalBasis();
         std::cout << "Find Optimal Basis done." << std::endl;
     }
@@ -170,6 +173,30 @@ void Application::drawUI() {
     ImGui::Separator();
     ImGui::Spacing();
 
+    ImGui::Text("Correspondence (Start Vertex k)");
+    ImGui::Checkbox("Auto-Find Best k", &m_autoFindK);
+    
+    // 如果是自动模式，就禁用滑块
+    if (m_autoFindK) {
+        ImGui::Text("Best k (auto-found): %d", m_blender.getBestK());
+    } else {
+        // 假设 polyA 已经加载
+        int max_k = m_blender.getPolyA().n - 1;
+        if (max_k < 0) max_k = 0;
+        
+        // 手动滑块
+        ImGui::SliderInt("Manual k", &m_manualK, 0, max_k);
+        ImGui::SameLine();
+        if (ImGui::Button("Run with this k")) {
+            // 只运行 correspondence，不加载文件，也不 re-find basis
+             m_blender.computeCorrespondence(m_manualK);
+             std::cout << "Recompute Correspondence done (Manual k)." << std::endl;
+        }
+    }
+    
+    ImGui::Separator();
+    ImGui::Spacing();
+
     // --- sim_t 权重 (w1, w2) ---
     ImGui::Text("sim_t Weights (for Correspondence)");
     bool sim_changed = false;
@@ -186,10 +213,10 @@ void Application::drawUI() {
         sim_changed = true;
     }
 
-    if (ImGui::Button("Recompute Correspondence")) {
-        m_blender.computeCorrespondence();
-        std::cout << "Recompute Correspondence done." << std::endl;
-    }
+    // if (ImGui::Button("Recompute Correspondence")) {
+    //     m_blender.computeCorrespondence();
+    //     std::cout << "Recompute Correspondence done." << std::endl;
+    // }
 
     ImGui::Separator(); 
     ImGui::Spacing();

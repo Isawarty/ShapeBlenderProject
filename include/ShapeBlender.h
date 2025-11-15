@@ -61,7 +61,7 @@ class ShapeBlender {
         * 然后在代价图 (1 - G) 上运行n_A次动态规划，找到最短路径。
         * 这条路径就是顶点对应关系。
         */
-        void computeCorrespondence();
+        void computeCorrespondence(int manual_k = -1);
 
 
         /**
@@ -88,6 +88,7 @@ class ShapeBlender {
         // 访问器，以便Application可以绘制它们
         const Polygon& getPolyA() const { return m_polyA; }
         const Polygon& getPolyB() const { return m_polyB; }
+        int getBestK() const{return m_bestK;}
 
     private:
     Polygon m_polyA; // 源
@@ -95,6 +96,7 @@ class ShapeBlender {
 
     std::map<int, int> m_correspondence;
     AffineBasis m_basis;
+    int m_bestK = 0;
 
 
     /**

@@ -5,6 +5,7 @@
 #include <iterator>
 #include <limits>
 #include <ostream>
+#include <utility>
 #include <vector>
 #include <algorithm> // for std::sort
 #include <functional>
@@ -121,7 +122,7 @@ double ShapeBlender::compute_smooth_a(int i_A, int i_B) const{
     return m_smooth_a_wS * S + m_smooth_a_wR * R + m_smooth_a_wA * A;
 }
 
-void ShapeBlender::computeCorrespondence(){
+void ShapeBlender::computeCorrespondence(int manual_k){
     int m = m_polyA.n;
     int n = m_polyB.n;
 
@@ -201,21 +202,41 @@ void ShapeBlender::computeCorrespondence(){
     };
 
 
-    for (int k = 0; k < m; ++k) {
-        double current_total_cost = run_single_dp_pass(k).first; // 只获取代价
+    // for (int k = 0; k < m; ++k) {
+    //     double current_total_cost = run_single_dp_pass(k).first; // 只获取代价
 
-        if (current_total_cost < min_total_cost) {
-            min_total_cost = current_total_cost;
-            best_k = k;
+    //     if (current_total_cost < min_total_cost) {
+    //         min_total_cost = current_total_cost;
+    //         best_k = k;
+    //     }
+    // }
+    if (manual_k == -1) {
+        // --- 自动模式 ---
+        // (遍历 A 的 m 个起始点)
+        std::cout << "Running Auto-Search for best k (O(m^2*n))..." << std::endl;
+        for (int k = 0; k < m; ++k) {
+            double current_total_cost = run_single_dp_pass(k).first; // 只获取代价
+            if (current_total_cost < min_total_cost) {
+                 min_total_cost = current_total_cost;
+                 m_bestK = k; 
+            }
         }
+        std::cout << "  - (Auto-Search) Best start vertex (k) = " << m_bestK << std::endl;
+
+    } else {
+        // --- 手动模式 ---
+        // (只运行一次，使用用户指定的 k)
+        std::cout << "Running Manual-Search for k = " << manual_k << " (O(m*n))..." << std::endl;
+        m_bestK = manual_k;
     }
 
-    std::cout << "  - Best start vertex (k) = " << best_k << std::endl;
+    //std::cout << "  - Best start vertex (k) = " << best_k << std::endl;
 
     // -----------------------------------------------------------------
-    // 只为 'best_k' 重新获取一次 dpPath
-    
-    Eigen::MatrixXi dpPath = run_single_dp_pass(best_k).second; // 只获取路径
+    // 重走 'best_k'
+    std::pair<double, Eigen::MatrixXi> result = run_single_dp_pass(m_bestK);
+    if(manual_k != -1) min_total_cost = result.first;
+    Eigen::MatrixXi dpPath = result.second; 
 
     m_correspondence.clear();
     int i = m-1;
