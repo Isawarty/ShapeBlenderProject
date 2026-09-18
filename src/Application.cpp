@@ -1,6 +1,7 @@
 #include "Application.h"
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <ostream>
 #include <string.h> // for strncpy
 
@@ -17,8 +18,8 @@ static void glfw_error_callback(int error, const char* description) {
 }
 
 Application::Application(){
-    strncpy(m_pathABuf, "../assets/poly_a.json", 128);
-    strncpy(m_pathBBuf, "../assets/poly_b.json", 128);
+    strncpy(m_pathABuf, "../assets/bunny_contour.json", 128);
+    strncpy(m_pathBBuf, "../assets/gorilla_contour.json", 128);
 }
 
 Application::~Application(){
@@ -157,7 +158,16 @@ void Application::mainLoop() {
 }
 
 void Application::drawUI() {
+    const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+    const float controlsWidth = 360.0f;
+
     // 控制面板
+    ImGui::SetNextWindowPos(
+        ImVec2(mainViewport->WorkPos.x + 12.0f, mainViewport->WorkPos.y + 12.0f),
+        ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(
+        ImVec2(controlsWidth, mainViewport->WorkSize.y - 24.0f),
+        ImGuiCond_FirstUseEver);
     ImGui::Begin("Controls");
     ImGui::InputText("Polygon A Path", m_pathABuf, 128);
     ImGui::InputText("Polygon B Path", m_pathBBuf, 128);
@@ -168,7 +178,7 @@ void Application::drawUI() {
     ImGui::Separator();
     
     ImGui::SliderFloat("Time (t)", &m_interpTime, 0.0f, 1.0f);
-    ImGui::DragFloat("Render Scale", &m_renderScale, 0.01f, 0.1f, 10.0f);
+    ImGui::TextDisabled("Viewport uses automatic fit-to-panel scaling.");
 
     ImGui::Separator();
     ImGui::Spacing();
@@ -262,28 +272,85 @@ void Application::drawUI() {
     ImGui::End();
 
     // 渲染视口
+    ImGui::SetNextWindowPos(
+        ImVec2(mainViewport->WorkPos.x + controlsWidth + 24.0f,
+               mainViewport->WorkPos.y + 12.0f),
+        ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(
+        ImVec2(mainViewport->WorkSize.x - controlsWidth - 36.0f,
+               mainViewport->WorkSize.y - 24.0f),
+        ImGuiCond_FirstUseEver);
     ImGui::Begin("Viewport");
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+    ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+    canvasSize.x = std::max(canvasSize.x, 300.0f);
+    canvasSize.y = std::max(canvasSize.y, 240.0f);
     
     // 绘制多边形
     const auto& polyA = m_blender.getPolyA();
     const auto& polyB = m_blender.getPolyB();
     Polygon interpPoly = m_blender.getInterpolatedPolygon(m_interpTime);
 
-    // 计算偏移量，使B在A的右侧
-    ImVec2 offsetA = canvasPos;
-    ImVec2 offsetB = ImVec2(canvasPos.x + 400 * m_renderScale, canvasPos.y);
-    ImVec2 offsetInterp = ImVec2(canvasPos.x + 200 * m_renderScale, canvasPos.y + 400 * m_renderScale);
+    const Polygon* polygons[] = {&polyA, &interpPoly, &polyB};
+    const char* labels[] = {"Source · Bunny", "Interpolated", "Target · Gorilla"};
+    const ImU32 colors[] = {
+        IM_COL32(238, 92, 92, 255),
+        IM_COL32(245, 245, 245, 255),
+        IM_COL32(72, 137, 235, 255),
+    };
 
-    // 红色: 源
-    drawPolygon(drawList, polyA, IM_COL32(255, 0, 0, 255), offsetA, m_renderScale);
-    // 蓝色: 目标
-    drawPolygon(drawList, polyB, IM_COL32(0, 0, 255, 255), offsetB, m_renderScale);
-    // 白色: 插值
-    drawPolygon(drawList, interpPoly, IM_COL32(255, 255, 255, 255), offsetInterp, m_renderScale);
+    const float gap = 12.0f;
+    const float cellWidth = (canvasSize.x - gap * 2.0f) / 3.0f;
+    for (int panel = 0; panel < 3; ++panel) {
+        ImVec2 panelMin(canvasPos.x + panel * (cellWidth + gap), canvasPos.y);
+        ImVec2 panelMax(panelMin.x + cellWidth, canvasPos.y + canvasSize.y);
+        drawList->AddRectFilled(panelMin, panelMax, IM_COL32(24, 29, 38, 255), 8.0f);
+        drawList->AddRect(panelMin, panelMax, IM_COL32(70, 80, 96, 255), 8.0f);
+        drawList->AddText(ImVec2(panelMin.x + 12.0f, panelMin.y + 10.0f),
+                          colors[panel], labels[panel]);
+        drawPolygonFitted(drawList, *polygons[panel], colors[panel],
+                          ImVec2(panelMin.x + 14.0f, panelMin.y + 38.0f),
+                          ImVec2(panelMax.x - 14.0f, panelMax.y - 14.0f));
+    }
+
+    ImGui::Dummy(canvasSize);
 
     ImGui::End();
+}
+
+void Application::drawPolygonFitted(ImDrawList* drawList, const Polygon& poly,
+                                    ImU32 color, const ImVec2& panelMin,
+                                    const ImVec2& panelMax) const {
+    if (poly.n == 0) return;
+
+    double minX = std::numeric_limits<double>::max();
+    double minY = std::numeric_limits<double>::max();
+    double maxX = std::numeric_limits<double>::lowest();
+    double maxY = std::numeric_limits<double>::lowest();
+    for (const auto& vertex : poly.vertices) {
+        minX = std::min(minX, vertex.x());
+        minY = std::min(minY, vertex.y());
+        maxX = std::max(maxX, vertex.x());
+        maxY = std::max(maxY, vertex.y());
+    }
+
+    const double width = std::max(maxX - minX, 1e-9);
+    const double height = std::max(maxY - minY, 1e-9);
+    const float availableWidth = std::max(panelMax.x - panelMin.x, 1.0f);
+    const float availableHeight = std::max(panelMax.y - panelMin.y, 1.0f);
+    const float scale = 0.88f * std::min(
+        availableWidth / static_cast<float>(width),
+        availableHeight / static_cast<float>(height));
+
+    const double centerX = (minX + maxX) * 0.5;
+    const double centerY = (minY + maxY) * 0.5;
+    const ImVec2 panelCenter((panelMin.x + panelMax.x) * 0.5f,
+                             (panelMin.y + panelMax.y) * 0.5f);
+    const ImVec2 offset(
+        panelCenter.x - static_cast<float>(centerX) * scale,
+        panelCenter.y - static_cast<float>(centerY) * scale);
+    drawPolygon(drawList, poly, color, offset, scale);
 }
 
 void Application::drawPolygon(ImDrawList* drawList, const Polygon& poly, ImU32 color, const ImVec2& offset, float scale) const {

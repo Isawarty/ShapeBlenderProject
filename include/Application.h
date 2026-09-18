@@ -54,14 +54,19 @@ private:
     void drawPolygon(ImDrawList* drawList, const Polygon& poly, ImU32 color, const ImVec2& offset, float scale) const;
 
     /**
+     * @brief Scale and center a polygon inside a viewport panel.
+     */
+    void drawPolygonFitted(ImDrawList* drawList, const Polygon& poly, ImU32 color,
+                           const ImVec2& panelMin, const ImVec2& panelMax) const;
+
+    /**
      * @brief 封装了加载和预计算的逻辑。
      */
     void loadData();
 
     GLFWwindow* m_window = nullptr;
     ShapeBlender m_blender;
-    float m_interpTime = 0.0f;
-    float m_renderScale = 1.0f;
+    float m_interpTime = 0.5f;
 
     // 用于 ImGui 文本输入的缓冲区
     char m_pathABuf[128];

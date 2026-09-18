@@ -147,8 +147,6 @@ void ShapeBlender::computeCorrespondence(int manual_k){
 
 
     double min_total_cost = std::numeric_limits<double>::max();
-    int best_k = 0; // 最佳的 A 的起始顶点
-    
     //----- 将DP逻辑抽象为一个辅助函数 -----
     auto run_single_dp_pass = [&](int k) -> std::pair<double, Eigen::MatrixXi> {
         
@@ -234,7 +232,7 @@ void ShapeBlender::computeCorrespondence(int manual_k){
     
     while (i >= 0 && j >= 0) {
         // 将 "窗口" 索引 (i, j) 转换回 "真实" 索引
-        m_correspondence[(i + best_k) % m] = j;
+        m_correspondence[(i + m_bestK) % m] = j;
         
         int path = dpPath(i,j);
         
@@ -250,7 +248,7 @@ void ShapeBlender::computeCorrespondence(int manual_k){
         }
     }
     std::cout << "  - i = " << i << "; j = " << j << std::endl;
-    std::cout << "  - Best path start index (A_start) = " << best_k << " (maps to B[ 0 ])" << std::endl;
+    std::cout << "  - Best path start index (A_start) = " << m_bestK << " (maps to B[ 0 ])" << std::endl;
     std::cout << "  - Min total cost = " << min_total_cost << std::endl;
     std::cout << "  - Correspondence map size: " << m_correspondence.size() << " (should be " << m << ")" << std::endl;
 }
@@ -285,10 +283,56 @@ void ShapeBlender::findOptimalBasis(){
     // 我们使用 std::greater<> 来进行降序排序
     std::sort(smooth_pairs.begin(), smooth_pairs.end(), std::greater<SmoothPair>());
 
-    //取排序后的前 3 个
-    const auto& best_1 = smooth_pairs[0];
-    const auto& best_2 = smooth_pairs[1];
-    const auto& best_3 = smooth_pairs[2];
+    // 在高分候选中联合选择三个基点。仅取前三名可能让三个点集中在
+    // 同一局部甚至接近共线，导致仿射坐标系病态、插值形状塌缩。
+    const std::size_t candidate_count = std::min<std::size_t>(48, smooth_pairs.size());
+    std::array<std::size_t, 3> best_indices = {0, 1, 2};
+    double best_score = -std::numeric_limits<double>::infinity();
+    double best_coverage = 0.0;
+
+    auto triangle_area = [](const Eigen::Vector2d& a,
+                            const Eigen::Vector2d& b,
+                            const Eigen::Vector2d& c) {
+        const Eigen::Vector2d ab = b - a;
+        const Eigen::Vector2d ac = c - a;
+        return 0.5 * std::fabs(ab.x() * ac.y() - ab.y() * ac.x());
+    };
+
+    for (std::size_t i = 0; i + 2 < candidate_count; ++i) {
+        for (std::size_t j = i + 1; j + 1 < candidate_count; ++j) {
+            for (std::size_t k = j + 1; k < candidate_count; ++k) {
+                const auto& p1 = smooth_pairs[i];
+                const auto& p2 = smooth_pairs[j];
+                const auto& p3 = smooth_pairs[k];
+
+                const double area_A = triangle_area(
+                    m_polyA.vertices[p1.i_A], m_polyA.vertices[p2.i_A],
+                    m_polyA.vertices[p3.i_A]);
+                const double area_B = triangle_area(
+                    m_polyB.vertices[p1.i_B], m_polyB.vertices[p2.i_B],
+                    m_polyB.vertices[p3.i_B]);
+                const double coverage_A = area_A / std::max(m_polyA.totalArea, 1e-9);
+                const double coverage_B = area_B / std::max(m_polyB.totalArea, 1e-9);
+                const double coverage = std::min(coverage_A, coverage_B);
+
+                // 两个形状中的基三角形都必须覆盖足够区域，避免病态基。
+                if (coverage < 0.02) continue;
+
+                const double similarity = std::cbrt(
+                    p1.smooth_a_value * p2.smooth_a_value * p3.smooth_a_value);
+                const double score = similarity * (1.0 + std::sqrt(coverage));
+                if (score > best_score) {
+                    best_score = score;
+                    best_coverage = coverage;
+                    best_indices = {i, j, k};
+                }
+            }
+        }
+    }
+
+    const auto& best_1 = smooth_pairs[best_indices[0]];
+    const auto& best_2 = smooth_pairs[best_indices[1]];
+    const auto& best_3 = smooth_pairs[best_indices[2]];
 
     //存储最佳基
     m_basis.polyA_indices[0] = best_1.i_A;
@@ -302,7 +346,8 @@ void ShapeBlender::findOptimalBasis(){
 
     double max_smooth_t = best_1.smooth_a_value * best_2.smooth_a_value * best_3.smooth_a_value;
 
-    std::cout << "Found optimal basis with smooth_t = " << max_smooth_t << std::endl;
+    std::cout << "Found stable basis with smooth_t = " << max_smooth_t
+              << ", min coverage = " << best_coverage << std::endl;
 } 
 
 Eigen::Vector2d ShapeBlender::getLocalCoords(const Eigen::Vector2d& p, 
